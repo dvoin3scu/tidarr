@@ -1,7 +1,14 @@
 import { Request, Response } from "express";
 
+import { getAppInstance } from "../helpers/app-instance";
 import { getBasePath } from "../helpers/base-path";
-import { generateNewznabItem, generateNzbContent } from "./utils/lidarr";
+
+import {
+  generateNewznabItem,
+  generateNzbContent,
+  getAvailableQualities,
+  isAlbumAllowedByAtmosFilter,
+} from "./utils/lidarr";
 import { searchTidalForLidarr } from "./utils/tidal-search-albums";
 
 export function handleCapsRequest(req: Request, res: Response): void {
@@ -73,21 +80,25 @@ export async function handleSearchRequest(
 
   const results = await searchTidalForLidarr(q);
 
-  const qualities = ["hires_lossless", "lossless", "high", "low"];
-  const items =
-    results.length > 0
-      ? results
-          .flatMap((album) =>
-            qualities.map((quality) =>
-              generateNewznabItem(album, req, quality),
-            ),
-          )
-          .join("\n")
-      : "";
+  const app = getAppInstance();
+  const atmosFilter = app.locals.tiddlConfig?.download?.atmos_filter || "none";
+  const albums = results.filter((album) =>
+    isAlbumAllowedByAtmosFilter(album, atmosFilter),
+  );
+  const items = albums
+    .flatMap((album) =>
+      getAvailableQualities(album).map((quality) =>
+        generateNewznabItem(album, req, quality),
+      ),
+    )
+    .join("\n");
+  const totalResults = albums.reduce(
+    (total, album) => total + getAvailableQualities(album).length,
+    0,
+  );
 
-  const totalResults = results.length * qualities.length;
   console.log(
-    `${results.length > 0 ? "✅" : "0️⃣"} [Lidarr] ${totalResults} results (${results.length} albums × ${qualities.length} qualities)`,
+    `${albums.length > 0 ? "✅" : "0️⃣"} [Lidarr] ${totalResults} results (${albums.length} albums, ${results.length - albums.length} skipped by Dolby Atmos filter)`,
   );
 
   res.set("Content-Type", "application/xml");
@@ -100,7 +111,7 @@ export async function handleSearchRequest(
     <language>en-us</language>
     <webMaster>tidarr@tidarr.com</webMaster>
     <pubDate>${new Date().toUTCString()}</pubDate>
-    <newznab:response offset="0" total="${results.length}"/>
+    <newznab:response offset="0" total="${totalResults}"/>
 ${items}
   </channel>
 </rss>`);
