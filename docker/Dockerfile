@@ -33,6 +33,11 @@ RUN apk add --no-cache --virtual .build-deps \
     python -m pip install --no-cache-dir -r docker/requirements.txt && \
     apk del .build-deps
 
+# tiddl requests streams without immersiveaudio, so Tidal returns Dolby Atmos for tracks
+# that have it and atmos_filter "none" skips them. Ask for stereo unless Atmos is wanted.
+COPY docker/tiddl-stereo-stream.py docker/tiddl-stereo-stream.py
+RUN python docker/tiddl-stereo-stream.py
+
 # Create beets directory structure
 RUN mkdir -p /shared/beets && \
     touch /shared/beets/beets-library.blb
