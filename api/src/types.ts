@@ -221,6 +221,10 @@ export interface TidalAlbum {
   duration?: number;
   type: string;
   audioQuality: string;
+  audioModes?: string[];
+  mediaMetadata?: {
+    tags?: string[];
+  };
   explicit?: boolean;
 }
 
