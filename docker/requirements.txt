@@ -2,4 +2,4 @@ pylast==7.2.0
 
 beets[fetchart, lastgenre, lastimport, advancedrewrite]==2.5.1
 
-tiddl @ https://github.com/dvoin3scu/tiddl/archive/refs/heads/stereo-stream-when-atmos-none.tar.gz
+tiddl @ https://github.com/dvoin3scu/tiddl/archive/refs/tags/v3.4.4-stereo.1.tar.gz
