@@ -5,6 +5,7 @@
   "scripts": {
     "app-build": "pnpm --filter tidarr-react build",
     "api-build": "pnpm --filter tidarr-api build",
+    "api-test": "pnpm --filter tidarr-api test",
     "dev": "concurrently -n api,front \"pnpm --filter tidarr-api start\" \"pnpm --filter tidarr-react start\"",
     "prod": "node ./api/dist/index.js",
     "lint": "oxlint -c .oxlintrc.json .",
