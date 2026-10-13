@@ -8,7 +8,7 @@ import {
   createNzoId,
   createSuccessResponse,
   extractAlbumIdFromNzb,
-  extractItemIdFromNzoId,
+  parseNzoId,
   extractQualityFromNzb,
   getQueueStatus,
   mapItemToHistorySlot,
@@ -85,9 +85,9 @@ export async function handleAddUrlRequest(req: Request, res: Response) {
         `[SABnzbd] Album ${albumId}${quality ? ` (${quality})` : ""}`,
       );
 
-      await addAlbumToQueue(albumId, quality);
+      const grabId = await addAlbumToQueue(albumId, quality);
 
-      return res.json(createSuccessResponse([createNzoId(albumId)]));
+      return res.json(createSuccessResponse([createNzoId(albumId, grabId)]));
     }
 
     // Fallback
@@ -118,9 +118,9 @@ async function handleDeleteRequest(
       return res.json(createErrorResponse("Missing nzo_id parameter"));
     }
 
-    // Extract item ID from nzo_id format: tidarr_nzo_<id>
+    // nzo_id format: tidarr_nzo_<id>[_<grabId>]
     const nzoId = value as string;
-    const itemId = extractItemIdFromNzoId(nzoId);
+    const { itemId, grabId } = parseNzoId(nzoId);
 
     console.log(
       `[SABnzbd] Delete request for nzo_id: ${nzoId} (item ID: ${itemId}) from ${source}`,
@@ -138,6 +138,14 @@ async function handleDeleteRequest(
     if (!item) {
       console.log(`[SABnzbd] Item ${itemId} not found in ${source}`);
       return res.json(createErrorResponse("Item not found"));
+    }
+
+    // A delete for an earlier grab of the same album must not cancel the current one
+    if (item.grabId && grabId !== item.grabId) {
+      console.log(
+        `[SABnzbd] Ignoring delete for earlier grab ${nzoId} (current: ${createNzoId(itemId, item.grabId)})`,
+      );
+      return res.json(createSuccessResponse([nzoId]));
     }
 
     // Remove the item from the processing stack
