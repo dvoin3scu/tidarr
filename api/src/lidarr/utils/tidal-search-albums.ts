@@ -50,7 +50,7 @@ export async function searchTidalForLidarr(
 export async function addAlbumToQueue(
   id: string,
   quality?: string | null,
-): Promise<void> {
+): Promise<string | undefined> {
   const app = getAppInstance();
   const countryCode = app.locals.tiddlConfig?.auth?.country_code || "US";
   const albumUrl = `${TIDAL_API_URL}/v1/albums/${id}?countryCode=${countryCode}`;
@@ -64,6 +64,7 @@ export async function addAlbumToQueue(
       ? mapQualityToTiddl(quality)
       : app.locals.tiddlConfig?.download?.track_quality || "high";
 
+    const grabId = Date.now().toString(36);
     const processingItem = {
       id: id,
       artist: getAlbumArtist(albumData),
@@ -76,6 +77,7 @@ export async function addAlbumToQueue(
       loading: true,
       error: false,
       source: "lidarr" as const,
+      grabId,
     };
 
     // addItem already replaces any existing item with the same id internally
@@ -84,5 +86,6 @@ export async function addAlbumToQueue(
     console.log(
       `🕖 [Lidarr] "${albumData.title}" (${id}) queued → ${tiddlQuality}`,
     );
+    return grabId;
   }
 }
