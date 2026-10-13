@@ -66,12 +66,15 @@ export function parseMultipartNzb(
 const SABNZBD_VERSION = "3.0.0";
 
 // Helper functions
-export function createNzoId(itemId: string): string {
-  return `tidarr_nzo_${itemId}`;
+// Each grab gets its own nzo_id (tidarr_nzo_<itemId>_<grabId>), so Lidarr never
+// confuses a new grab of an album with an earlier, already imported one.
+export function createNzoId(itemId: string, grabId?: string): string {
+  return grabId ? `tidarr_nzo_${itemId}_${grabId}` : `tidarr_nzo_${itemId}`;
 }
 
-export function extractItemIdFromNzoId(nzoId: string): string {
-  return nzoId.replace("tidarr_nzo_", "");
+export function parseNzoId(nzoId: string): { itemId: string; grabId?: string } {
+  const [itemId, grabId] = nzoId.replace("tidarr_nzo_", "").split("_");
+  return { itemId, grabId };
 }
 
 export function createErrorResponse(error: string) {
@@ -134,7 +137,7 @@ export function mapItemToQueueSlot(
     priority: "Normal",
     cat: "music",
     percentage: item.status === "download" ? "50" : "0",
-    nzo_id: createNzoId(item.id),
+    nzo_id: createNzoId(item.id, item.grabId),
     unpackopts: "3",
     labels: [],
     path: downloadPath,
@@ -201,7 +204,7 @@ export async function mapItemToHistorySlot(item: ProcessingItemType) {
   return {
     status: isCompleted ? "Completed" : "Failed",
     name,
-    nzo_id: createNzoId(item.id),
+    nzo_id: createNzoId(item.id, item.grabId),
     category: "music",
     size: formatBytes(bytes),
     bytes: String(bytes),
