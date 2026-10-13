@@ -39,6 +39,7 @@ export type ProcessingItemType = {
   skipped?: boolean;
   errorStage?: "download" | "post_processing";
   source?: "lidarr" | "tidarr";
+  grabId?: string; // unique per Lidarr grab, part of the SABnzbd nzo_id
   progress?: {
     current: number;
     total: number;
