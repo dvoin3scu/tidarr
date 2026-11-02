@@ -5,6 +5,7 @@
   "scripts": {
     "app-build": "pnpm --filter tidarr-react build",
     "api-build": "pnpm --filter tidarr-api build",
+    "api-test": "pnpm --filter tidarr-api test",
     "dev": "concurrently -n api,front \"pnpm --filter tidarr-api start\" \"pnpm --filter tidarr-react start\"",
     "prod": "node ./api/dist/index.js",
     "lint": "oxlint -c .oxlintrc.json .",
@@ -14,15 +15,15 @@
   },
   "devDependencies": {
     "concurrently": "^10.0.6",
-    "oxfmt": "^0.72.0",
-    "oxlint": "^1.87.0",
+    "oxfmt": "^0.74.0",
+    "oxlint": "^1.89.0",
     "shell-quote": "1.12.0",
     "typescript": "^7.0.2"
   },
   "pnpm": {
     "overrides": {
       "brace-expansion": ">=5.0.1",
-      "dompurify": ">=3.4.13",
+      "dompurify": ">=3.4.17",
       "linkify-it": ">=5.0.1",
       "minimatch": ">=10.2.3",
       "shell-quote": ">=1.11.0"

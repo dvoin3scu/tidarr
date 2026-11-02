@@ -36,9 +36,12 @@ export type ProcessingItemType = {
   process?: ChildProcess;
   retryCount?: number;
   networkError?: boolean;
+  rateLimited?: boolean;
+  rateLimitRetryAt?: number; // timestamp of the next retry while waiting on a rate limit
   skipped?: boolean;
   errorStage?: "download" | "post_processing";
   source?: "lidarr" | "tidarr";
+  grabId?: string; // unique per Lidarr grab, part of the SABnzbd nzo_id
   progress?: {
     current: number;
     total: number;
@@ -98,14 +101,18 @@ export type TiddlConfig = {
       mix?: string;
     };
   };
-  auth: {
-    token: string;
-    refresh_token: string;
-    expires: number;
-    expires_at?: number; // Unix timestamp when token expires (used for refresh logic)
-    user_id: string;
-    country_code: string;
-  };
+  auth: TidalAuth;
+};
+
+export type TidalAuth = {
+  token: string;
+  refresh_token: string;
+  expires?: number;
+  expires_at?: number; // Unix timestamp when token expires (used for refresh logic)
+  user_id: string;
+  country_code: string;
+  auth_type?: "oauth" | "pkce";
+  is_pkce?: boolean;
 };
 
 // SYNC LIST
@@ -169,6 +176,8 @@ export interface SettingsResponse {
     ENABLE_HISTORY?: string;
   };
   noToken: boolean;
+  requiresPkceAuth: boolean;
+  noAtmosToken: boolean;
   tiddl_config?: TiddlConfig;
   configErrors?: string[];
 }
@@ -221,6 +230,10 @@ export interface TidalAlbum {
   duration?: number;
   type: string;
   audioQuality: string;
+  audioModes?: string[];
+  mediaMetadata?: {
+    tags?: string[];
+  };
   explicit?: boolean;
 }
 

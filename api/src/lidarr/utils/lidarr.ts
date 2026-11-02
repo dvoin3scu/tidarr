@@ -1,5 +1,6 @@
 import { Request } from "express";
 
+import { getBasePath } from "../../helpers/base-path";
 import { TidalAlbum } from "../../types";
 
 import { formatForMusicBrainz } from "./musicbrainz";
@@ -81,6 +82,49 @@ const QUALITY_MAP: Record<string, qualityInfoType> = {
   },
 };
 
+/**
+ * Qualities Tidal actually offers for an album, best first.
+ * Based on mediaMetadata.tags (HIRES_LOSSLESS, LOSSLESS); AAC tiers are always available.
+ * Falls back to album.audioQuality when tags are missing.
+ */
+export function getAvailableQualities(album: TidalAlbum): string[] {
+  const tags = album.mediaMetadata?.tags ?? [];
+  const audioQuality = album.audioQuality?.toUpperCase();
+  const qualities: string[] = [];
+
+  if (tags.includes("HIRES_LOSSLESS") || audioQuality === "HI_RES_LOSSLESS") {
+    qualities.push("hires_lossless");
+  }
+  if (
+    tags.includes("HIRES_LOSSLESS") ||
+    tags.includes("LOSSLESS") ||
+    audioQuality === "HI_RES_LOSSLESS" ||
+    audioQuality === "LOSSLESS"
+  ) {
+    qualities.push("lossless");
+  }
+  qualities.push("high", "low");
+
+  return qualities;
+}
+
+/**
+ * Applies tiddl's atmos_filter to album search results:
+ * "none" drops Dolby Atmos-only albums, "only" keeps only them, "allow" keeps all.
+ */
+export function isAlbumAllowedByAtmosFilter(
+  album: TidalAlbum,
+  atmosFilter: string,
+): boolean {
+  const modes = album.audioModes ?? [];
+  const isAtmosOnly =
+    modes.length > 0 && modes.every((mode) => mode === "DOLBY_ATMOS");
+
+  if (atmosFilter === "only") return modes.includes("DOLBY_ATMOS");
+  if (atmosFilter === "allow") return true;
+  return !isAtmosOnly;
+}
+
 export function mapQualityToTiddl(quality: string): string {
   return QUALITY_MAP[quality]?.tiddlQuality || "high";
 }
@@ -124,8 +168,8 @@ export function generateNewznabItem(
   const qualityInfo = QUALITY_MAP[targetQuality] || QUALITY_MAP.lossless;
 
   const apiKey = req.query.apikey || req.headers["x-api-key"];
-  const downloadUrl = `${req.protocol}://${req.get("host")}/api/lidarr/download/${album.id}/${targetQuality}${apiKey ? `?apikey=${apiKey}` : ""}`;
-  const tidarrUrl = `${req.protocol}://${req.get("host")}/album/${album.id}`;
+  const downloadUrl = `${req.protocol}://${req.get("host")}${getBasePath()}/api/lidarr/download/${album.id}/${targetQuality}${apiKey ? `?apikey=${apiKey}` : ""}`;
+  const tidarrUrl = `${req.protocol}://${req.get("host")}${getBasePath()}/album/${album.id}`;
   const albumArtist = getAlbumArtist(album);
 
   const pubDate = album.releaseDate

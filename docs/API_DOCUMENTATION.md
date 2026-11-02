@@ -11,6 +11,7 @@ This documentation describes how to use the Tidarr REST API to automate download
 - [Queue Management](#queue-management)
   - [Single download (NO\_DOWNLOAD mode)](#single-download-no_download-mode)
   - [Retry post-processing](#retry-post-processing)
+  - [Rate limit retry](#rate-limit-retry)
 - [History Endpoints](#history-endpoints)
 - [Configuration Endpoints](#configuration-endpoints)
 - [Synchronization Endpoints (watch list)](#synchronization-endpoints)
@@ -568,6 +569,29 @@ curl -X POST http://localhost:8484/api/retry-post-processing \
 
 **Error:** `500` if the item is not found, not in `error` status, or if another item is currently post-processing.
 
+
+### Rate limit retry
+
+When Tidal rate limits a download (HTTP `429`), Tidarr waits 2 minutes and restarts it, with no limit on the number of attempts. While waiting, the item has a `rateLimitRetryAt` timestamp and the UI shows a warning banner. These two endpoints let you skip the wait or leave the loop.
+
+```bash
+# Restart the download now
+curl -X POST http://localhost:8484/api/rate-limit/retry-now \
+  -H "X-Api-Key: your-api-key" \
+  -H 'Content-Type: application/json' \
+  -d '{"id": "251082404"}'
+
+# Stop retrying: the item ends in `error`, files already downloaded are kept for post-processing
+curl -X POST http://localhost:8484/api/rate-limit/stop \
+  -H "X-Api-Key: your-api-key" \
+  -H 'Content-Type: application/json' \
+  -d '{"id": "251082404"}'
+```
+
+**Response:** `204 No Content`
+
+**Error:** `500` if the item is not waiting after a rate limit.
+
 ---
 
 ## History Endpoints
@@ -630,17 +654,91 @@ curl http://localhost:8484/api/settings \
 
 ---
 
-### Run Tidal authentication flow
+### Legacy Tidal authentication endpoint
 
 ```bash
 GET /api/run-token
 ```
 
-SSE endpoint that initiates the Tidal device authentication flow. Opens a stream that sends authentication events (login URL, status updates) until authentication completes or fails.
+This endpoint is deprecated and returns `410 Gone`. It cannot safely preserve
+the old behavior because the primary and Atmos profiles now use different
+authentication flows.
 
-**Response:** `text/event-stream`
+Use `/api/token/pkce/start` followed by `/api/token/pkce/complete` for the
+primary Hi-Res profile, or `/api/token/atmos` for the secondary Atmos profile.
 
-**Note:** This endpoint is used by the web UI during initial Tidal setup. Events are streamed until authentication completes.
+**Response:**
+
+```json
+{
+  "message": "This authentication endpoint was replaced by the Hi-Res PKCE and Atmos profile endpoints.",
+  "pkceStart": "/api/token/pkce/start",
+  "pkceComplete": "/api/token/pkce/complete",
+  "atmosphere": "/api/token/atmos"
+}
+```
+
+---
+
+### Start Hi-Res TIDAL authentication
+
+Use this PKCE flow so TIDAL can return stereo and MAX streams.
+
+```http
+GET /api/token/pkce/start
+```
+
+Returns a short-lived login identifier and a TIDAL URL:
+
+```json
+{
+  "loginId": "...",
+  "loginUrl": "https://login.tidal.com/authorize?..."
+}
+```
+
+Open `loginUrl`, sign in, and copy the complete URL of the redirected TIDAL
+page. The apparent “Oops” page is expected.
+
+### Complete Hi-Res TIDAL authentication
+
+```http
+POST /api/token/pkce/complete
+Content-Type: application/json
+
+{
+  "loginId": "...",
+  "redirectUrl": "https://tidal.com/android/login/auth?code=...&state=..."
+}
+```
+
+The completion request validates the returned OAuth state against the
+short-lived login request before exchanging the authorization code.
+
+On success, Tidarr stores a refreshable PKCE token and returns:
+
+```json
+{
+  "success": true,
+  "message": "Authenticated!"
+}
+```
+
+If a legacy device token exists when PKCE authentication is completed, Tidarr
+preserves it as the Dolby Atmos profile. The download service uses the PKCE
+profile for `--dolby-atmos none` and the device profile for
+`--dolby-atmos only` or `allow`.
+
+### Authenticate Dolby Atmos profile
+
+```http
+GET /api/token/atmos
+Accept: text/event-stream
+```
+
+Starts Tiddl's device authorization in a separate profile directory and emits
+the TIDAL verification URL and completion status as server-sent events. This is
+needed on fresh installations that do not have a legacy token to preserve.
 
 ---
 

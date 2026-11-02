@@ -1,6 +1,14 @@
 import { Request, Response } from "express";
 
-import { generateNewznabItem, generateNzbContent } from "./utils/lidarr";
+import { getAppInstance } from "../helpers/app-instance";
+import { getBasePath } from "../helpers/base-path";
+
+import {
+  generateNewznabItem,
+  generateNzbContent,
+  getAvailableQualities,
+  isAlbumAllowedByAtmosFilter,
+} from "./utils/lidarr";
 import { searchTidalForLidarr } from "./utils/tidal-search-albums";
 
 export function handleCapsRequest(req: Request, res: Response): void {
@@ -42,6 +50,8 @@ export async function handleSearchRequest(
     console.log(`[Lidarr] Query: "${q}"`);
   }
 
+  // Indexer tests search without a query. Prowlarr drops items without an
+  // enclosure and then rejects the indexer, so the test item needs one.
   if (!q) {
     console.log(
       "⏹️ [Lidarr] No search query provided, returning empty results",
@@ -52,14 +62,16 @@ export async function handleSearchRequest(
   <channel>
     <title>Tidarr</title>
     <description>Tidarr Indexer</description>
-    <link>${req.protocol}://${req.get("host")}/api/lidarr</link>
+    <link>${req.protocol}://${req.get("host")}${getBasePath()}/api/lidarr</link>
     <language>en-us</language>
     <webMaster>tidarr@tidarr.com</webMaster>
     <pubDate>${new Date().toUTCString()}</pubDate>
     <newznab:response offset="0" total="1"/>
     <item>
-          <title>test</title>
-          <pubDate>${new Date().toUTCString()}</pubDate>
+      <title>test</title>
+      <guid isPermaLink="false">tidarr-test</guid>
+      <pubDate>${new Date().toUTCString()}</pubDate>
+      <enclosure url="${req.protocol}://${req.get("host")}/api/lidarr?t=caps" length="0" type="application/x-nzb"/>
     </item>
   </channel>
 </rss>`);
@@ -68,21 +80,25 @@ export async function handleSearchRequest(
 
   const results = await searchTidalForLidarr(q);
 
-  const qualities = ["hires_lossless", "lossless", "high", "low"];
-  const items =
-    results.length > 0
-      ? results
-          .flatMap((album) =>
-            qualities.map((quality) =>
-              generateNewznabItem(album, req, quality),
-            ),
-          )
-          .join("\n")
-      : "";
+  const app = getAppInstance();
+  const atmosFilter = app.locals.tiddlConfig?.download?.atmos_filter || "none";
+  const albums = results.filter((album) =>
+    isAlbumAllowedByAtmosFilter(album, atmosFilter),
+  );
+  const items = albums
+    .flatMap((album) =>
+      getAvailableQualities(album).map((quality) =>
+        generateNewznabItem(album, req, quality),
+      ),
+    )
+    .join("\n");
+  const totalResults = albums.reduce(
+    (total, album) => total + getAvailableQualities(album).length,
+    0,
+  );
 
-  const totalResults = results.length * qualities.length;
   console.log(
-    `${results.length > 0 ? "✅" : "0️⃣"} [Lidarr] ${totalResults} results (${results.length} albums × ${qualities.length} qualities)`,
+    `${albums.length > 0 ? "✅" : "0️⃣"} [Lidarr] ${totalResults} results (${albums.length} albums, ${results.length - albums.length} skipped by Dolby Atmos filter)`,
   );
 
   res.set("Content-Type", "application/xml");
@@ -91,11 +107,11 @@ export async function handleSearchRequest(
   <channel>
     <title>Tidarr</title>
     <description>Tidarr Indexer</description>
-    <link>${req.protocol}://${req.get("host")}/api/lidarr</link>
+    <link>${req.protocol}://${req.get("host")}${getBasePath()}/api/lidarr</link>
     <language>en-us</language>
     <webMaster>tidarr@tidarr.com</webMaster>
     <pubDate>${new Date().toUTCString()}</pubDate>
-    <newznab:response offset="0" total="${results.length}"/>
+    <newznab:response offset="0" total="${totalResults}"/>
 ${items}
   </channel>
 </rss>`);

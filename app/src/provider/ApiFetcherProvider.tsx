@@ -44,9 +44,14 @@ type ApiFetcherContextType = {
     retry_failed: () => Promise<unknown>;
     auth: (body: string) => Promise<AuthType | undefined>;
     is_auth_active: () => Promise<CheckAuthType | undefined>;
-    get_token_sse: (
-      setOutput: React.Dispatch<React.SetStateAction<string | undefined>>,
-    ) => {
+    start_pkce_login: () => Promise<
+      { loginId: string; loginUrl: string } | undefined
+    >;
+    complete_pkce_login: (
+      loginId: string,
+      redirectUrl: string,
+    ) => Promise<{ success: boolean; message: string } | undefined>;
+    get_atmos_token_sse: (onOutput: (output: string) => void) => {
       eventSource: EventSourcePlus;
       controller: EventSourceController;
     };
@@ -74,6 +79,8 @@ type ApiFetcherContextType = {
     };
     single_download: (id: string) => Promise<void>;
     retry_post_processing: (id: string) => Promise<void>;
+    rate_limit_retry_now: (id: string) => Promise<void>;
+    rate_limit_stop: (id: string) => Promise<void>;
     pause_queue: () => Promise<void>;
     resume_queue: () => Promise<void>;
     get_queue_status: () => Promise<
@@ -270,29 +277,30 @@ export function APIFetcherProvider({ children }: { children: ReactNode }) {
 
   // Tidal token
 
-  function get_token_sse(
-    setOutput: React.Dispatch<React.SetStateAction<string | undefined>>,
-  ): {
+  async function start_pkce_login() {
+    return await queryExpressJS<{ loginId: string; loginUrl: string }>(
+      `${apiUrl}/token/pkce/start`,
+    );
+  }
+
+  async function complete_pkce_login(loginId: string, redirectUrl: string) {
+    return await queryExpressJS<{ success: boolean; message: string }>(
+      `${apiUrl}/token/pkce/complete`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ loginId, redirectUrl }),
+      },
+    );
+  }
+
+  function get_atmos_token_sse(onOutput: (output: string) => void): {
     eventSource: EventSourcePlus;
     controller: EventSourceController;
   } {
-    const { eventSource, controller } = streamExpressJS(
-      `${apiUrl}/run-token`,
-      (message) => {
-        if (message.data?.length === 0) return;
-
-        const url = message.data
-          .match(/https?:\/\/[^\s]+/)?.[0]
-          .replace("'", "");
-        if (url) {
-          setOutput(url);
-        } else {
-          setOutput(message.data);
-        }
-      },
-    );
-
-    return { eventSource, controller };
+    return streamExpressJS(`${apiUrl}/token/atmos`, (message) => {
+      if (message.data?.length > 0) onOutput(message.data);
+    });
   }
 
   async function delete_token() {
@@ -461,6 +469,28 @@ export function APIFetcherProvider({ children }: { children: ReactNode }) {
     });
   }
 
+  // Rate limit: skip the waiting delay, or leave the retry loop
+
+  async function rate_limit_retry_now(id: string): Promise<void> {
+    await queryExpressJS(`${apiUrl}/rate-limit/retry-now`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ id }),
+    });
+  }
+
+  async function rate_limit_stop(id: string): Promise<void> {
+    await queryExpressJS(`${apiUrl}/rate-limit/stop`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ id }),
+    });
+  }
+
   // Queue control
 
   async function pause_queue(): Promise<void> {
@@ -567,7 +597,9 @@ export function APIFetcherProvider({ children }: { children: ReactNode }) {
       retry_failed,
       auth,
       is_auth_active,
-      get_token_sse,
+      start_pkce_login,
+      complete_pkce_login,
+      get_atmos_token_sse,
       delete_token,
       get_sync_list,
       add_sync_item,
@@ -582,6 +614,8 @@ export function APIFetcherProvider({ children }: { children: ReactNode }) {
       set_tiddl_toml,
       single_download,
       retry_post_processing,
+      rate_limit_retry_now,
+      rate_limit_stop,
       pause_queue,
       resume_queue,
       get_queue_status,
